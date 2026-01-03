@@ -89,19 +89,19 @@
 - [x] Add `make sqlc` to generate code
 
 ### 13. Testing and validation
-- [ ] Test database connection with valid `DATABASE_URL`
-- [ ] Test application fails with missing `DATABASE_URL`
-- [ ] Test application fails with missing `JWT_SECRET`
-- [ ] Test migrations create users table successfully
-- [ ] Test registration with valid data returns 201 and token
-- [ ] Test registration with duplicate email returns 409
-- [ ] Test registration with invalid email returns 400
-- [ ] Test registration with short password returns 400
-- [ ] Test login with valid credentials returns 200 and token
-- [ ] Test login with invalid password returns 401
-- [ ] Test login with non-existent user returns 401
-- [ ] Test JWT token contains correct claims and expiration
-- [ ] Run `openspec validate setup-backend-foundation --strict`
+- [x] Test database connection with valid `DATABASE_URL`
+- [x] Test application fails with missing `DATABASE_URL`
+- [x] Test application fails with missing `JWT_SECRET`
+- [x] Test migrations create users table successfully
+- [x] Test registration with valid data returns 201 and token
+- [x] Test registration with duplicate email returns 409
+- [x] Test registration with invalid email returns 400
+- [x] Test registration with short password returns 400
+- [x] Test login with valid credentials returns 200 and token
+- [x] Test login with invalid password returns 401
+- [x] Test login with non-existent user returns 401
+- [x] Test JWT token contains correct claims and expiration
+- [x] Run `openspec validate setup-backend-foundation --strict`
 
 ## Dependencies and Parallelization
 - Tasks 1-2 can run in parallel
