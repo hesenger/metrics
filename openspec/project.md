@@ -6,7 +6,7 @@ so product managers and developers can easily understand user's behavior and A/B
 their product.
 
 ## Tech Stack
-- Backend with Go, Fiber, sqlc;
+- Backend with Go, Fiber, sqlc, PGx5, Golang Migrate;
 - Frontend with Bun, Vite, React, Typescript, Mantine UI, React Router;
 - Database with Postgres;
 

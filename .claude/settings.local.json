@@ -7,7 +7,15 @@
       "Bash(openspec validate:*)",
       "Bash(openspec show:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Skill(openspec:proposal)",
+      "Skill(openspec:apply)",
+      "Bash(go mod init:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go install:*)",
+      "Bash(sqlc generate:*)",
+      "Bash(go build:*)",
+      "Skill(openspec:archive)"
     ]
   }
 }
