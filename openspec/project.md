@@ -20,11 +20,11 @@ their product.
 - Do not use emojis;
 
 ### Architecture Patterns
-- Monorepo that builds to a single binary (GO backend project), serving FE static assets embedded
-in the binary;
+- Monorepo with backend code in `backend/` folder, frontend code will be added later;
+- Backend builds to a single binary (Go project), serving FE static assets embedded in the binary;
 - Local Development runs only database from a docker image, vite proxies api calls to BE;
-- Asserts are served from root, all api endpoints are served from /api;
-- Makefile with common commands for local development;
+- Assets are served from root, all api endpoints are served from /api;
+- Root Makefile with common commands for local development across entire monorepo;
 
 ### Testing Strategy
 - Descriptive tests focused in single or fewer assertions;

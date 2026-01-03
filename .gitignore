@@ -1,5 +1,5 @@
-bin/
-.env
+backend/bin/
+backend/.env
 .env.local
 .claude/settings.local.json
 server.log
