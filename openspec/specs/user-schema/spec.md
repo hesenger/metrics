@@ -4,19 +4,31 @@
 TBD - created by archiving change setup-backend-foundation. Update Purpose after archive.
 ## Requirements
 ### Requirement: User table structure
-The system MUST provide a users table with essential fields for authentication.
+The system MUST provide a users table with essential fields for authentication including OAuth support.
 
-#### Scenario: User table exists
+#### Scenario: User table supports OAuth fields
 **Given** migrations have been executed
-**Then** a `users` table exists in the database
-**And** the table has an `id` column as primary key
-**And** the table has an `email` column with unique constraint
-**And** the table has a `password_hash` column
-**And** the table has `created_at` and `updated_at` timestamp columns
+**Then** the `users` table has an optional `oauth_provider` column (nullable string)
+**And** the table has an optional `oauth_id` column (nullable string)
+**And** there is a unique constraint on (oauth_provider, oauth_id) for non-null values
+**And** the `password_hash` column is nullable to support OAuth users
 
-#### Scenario: Email uniqueness is enforced
-**Given** a user exists with email "user@example.com"
-**When** attempting to insert another user with the same email
+#### Scenario: OAuth user without password
+**Given** a user created via OAuth
+**Then** the user has oauth_provider set (e.g., "google")
+**And** the user has oauth_id set to the provider's user ID
+**And** the user's password_hash is null
+**And** the user's email is populated from OAuth provider
+
+#### Scenario: Email/password user remains unchanged
+**Given** a user created via email/password registration
+**Then** the user has password_hash set
+**And** the user's oauth_provider is null
+**And** the user's oauth_id is null
+
+#### Scenario: OAuth provider uniqueness
+**Given** a user exists with oauth_provider="google" and oauth_id="123456"
+**When** attempting to insert another user with the same oauth_provider and oauth_id
 **Then** the database rejects the insert
 **And** a unique constraint violation error is raised
 
