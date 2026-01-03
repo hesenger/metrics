@@ -30,12 +30,14 @@ func main() {
 	defer pool.Close()
 
 	queries := database.New(pool)
-	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret)
+	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
 
 	app := fiber.New()
 
 	app.Post("/api/auth/register", authHandler.Register)
 	app.Post("/api/auth/login", authHandler.Login)
+	app.Get("/api/auth/google", authHandler.InitiateGoogleOAuth)
+	app.Get("/api/auth/google/callback", authHandler.GoogleOAuthCallback)
 
 	log.Printf("server starting on port %s", cfg.Port)
 	if err := app.Listen(fmt.Sprintf(":%s", cfg.Port)); err != nil {

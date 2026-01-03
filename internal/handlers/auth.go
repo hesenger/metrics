@@ -10,17 +10,35 @@ import (
 	"github.com/hesen/metrics/internal/database"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	oauth2api "google.golang.org/api/oauth2/v2"
+	"google.golang.org/api/option"
 )
 
 type AuthHandler struct {
-	queries   *database.Queries
-	jwtSecret string
+	queries      *database.Queries
+	jwtSecret    string
+	googleOAuth  *oauth2.Config
+	stateStore   *auth.StateStore
 }
 
-func NewAuthHandler(queries *database.Queries, jwtSecret string) *AuthHandler {
+func NewAuthHandler(queries *database.Queries, jwtSecret string, googleClientID, googleClientSecret, googleRedirectURL string) *AuthHandler {
 	return &AuthHandler{
 		queries:   queries,
 		jwtSecret: jwtSecret,
+		googleOAuth: &oauth2.Config{
+			ClientID:     googleClientID,
+			ClientSecret: googleClientSecret,
+			RedirectURL:  googleRedirectURL,
+			Scopes: []string{
+				"https://www.googleapis.com/auth/userinfo.email",
+				"https://www.googleapis.com/auth/userinfo.profile",
+			},
+			Endpoint: google.Endpoint,
+		},
+		stateStore: auth.NewStateStore(),
 	}
 }
 
@@ -75,7 +93,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 
 	user, err := h.queries.CreateUser(context.Background(), database.CreateUserParams{
 		Email:        req.Email,
-		PasswordHash: passwordHash,
+		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -137,7 +155,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
+	if err := auth.VerifyPassword(user.PasswordHash.String, req.Password); err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "invalid credentials",
 		})
@@ -156,6 +174,106 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 			ID:        user.ID,
 			Email:     user.Email,
 			CreatedAt: user.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+		},
+	})
+}
+
+func (h *AuthHandler) InitiateGoogleOAuth(c *fiber.Ctx) error {
+	state, err := h.stateStore.GenerateState()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to generate state",
+		})
+	}
+
+	url := h.googleOAuth.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	return c.Redirect(url, fiber.StatusTemporaryRedirect)
+}
+
+func (h *AuthHandler) GoogleOAuthCallback(c *fiber.Ctx) error {
+	state := c.Query("state")
+	if !h.stateStore.ValidateState(state) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid state parameter",
+		})
+	}
+
+	code := c.Query("code")
+	if code == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "missing authorization code",
+		})
+	}
+
+	token, err := h.googleOAuth.Exchange(context.Background(), code)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to exchange code for token",
+		})
+	}
+
+	oauth2Service, err := oauth2api.NewService(context.Background(), option.WithTokenSource(h.googleOAuth.TokenSource(context.Background(), token)))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to create oauth2 service",
+		})
+	}
+
+	userInfo, err := oauth2Service.Userinfo.Get().Do()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to get user info from Google",
+		})
+	}
+
+	existingUser, err := h.queries.GetUserByOAuthProvider(context.Background(), database.GetUserByOAuthProviderParams{
+		OauthProvider: pgtype.Text{String: "google", Valid: true},
+		OauthID:       pgtype.Text{String: userInfo.Id, Valid: true},
+	})
+
+	var userID int64
+	var userEmail string
+	var createdAt pgtype.Timestamp
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			newUser, err := h.queries.CreateOAuthUser(context.Background(), database.CreateOAuthUserParams{
+				Email:         userInfo.Email,
+				OauthProvider: pgtype.Text{String: "google", Valid: true},
+				OauthID:       pgtype.Text{String: userInfo.Id, Valid: true},
+			})
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "failed to create user",
+				})
+			}
+			userID = newUser.ID
+			userEmail = newUser.Email
+			createdAt = newUser.CreatedAt
+		} else {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to fetch user",
+			})
+		}
+	} else {
+		userID = existingUser.ID
+		userEmail = existingUser.Email
+		createdAt = existingUser.CreatedAt
+	}
+
+	jwtToken, err := auth.GenerateToken(userID, userEmail, h.jwtSecret)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to generate token",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(AuthResponse{
+		Token: jwtToken,
+		User: UserDetails{
+			ID:        userID,
+			Email:     userEmail,
+			CreatedAt: createdAt.Time.Format("2006-01-02T15:04:05Z"),
 		},
 	})
 }
