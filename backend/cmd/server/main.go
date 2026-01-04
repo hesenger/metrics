@@ -42,6 +42,8 @@ func main() {
 	app.Post("/api/auth/login", authHandler.Login)
 	app.Get("/api/auth/google", authHandler.InitiateGoogleOAuth)
 	app.Get("/api/auth/google/callback", authHandler.GoogleOAuthCallback)
+	app.Get("/api/auth/me", authHandler.Me)
+	app.Post("/api/auth/logout", authHandler.Logout)
 
 	webFS, err := fs.Sub(backend.WebAssets, "web")
 	if err != nil {

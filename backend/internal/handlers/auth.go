@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/mail"
+	"net/url"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hesen/metrics/internal/auth"
@@ -48,14 +50,26 @@ type RegisterRequest struct {
 }
 
 type AuthResponse struct {
-	Token string      `json:"token"`
-	User  UserDetails `json:"user"`
+	User UserDetails `json:"user"`
 }
 
 type UserDetails struct {
-	ID        int64  `json:"id"`
-	Email     string `json:"email"`
-	CreatedAt string `json:"created_at"`
+	ID            int64  `json:"id"`
+	Email         string `json:"email"`
+	OAuthProvider string `json:"oauth_provider,omitempty"`
+	CreatedAt     string `json:"created_at"`
+}
+
+func (h *AuthHandler) setJWTCookie(c *fiber.Ctx, token string) {
+	c.Cookie(&fiber.Cookie{
+		Name:     "token",
+		Value:    token,
+		HTTPOnly: true,
+		Secure:   c.Protocol() == "https",
+		SameSite: "Strict",
+		MaxAge:   7 * 24 * 60 * 60,
+		Path:     "/",
+	})
 }
 
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
@@ -114,12 +128,19 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		})
 	}
 
+	h.setJWTCookie(c, token)
+
+	oauthProvider := ""
+	if user.OauthProvider.Valid {
+		oauthProvider = user.OauthProvider.String
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
-		Token: token,
 		User: UserDetails{
-			ID:        user.ID,
-			Email:     user.Email,
-			CreatedAt: user.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+			ID:            user.ID,
+			Email:         user.Email,
+			OAuthProvider: oauthProvider,
+			CreatedAt:     user.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
 		},
 	})
 }
@@ -168,12 +189,19 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
+	h.setJWTCookie(c, token)
+
+	oauthProvider := ""
+	if user.OauthProvider.Valid {
+		oauthProvider = user.OauthProvider.String
+	}
+
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
-		Token: token,
 		User: UserDetails{
-			ID:        user.ID,
-			Email:     user.Email,
-			CreatedAt: user.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+			ID:            user.ID,
+			Email:         user.Email,
+			OAuthProvider: oauthProvider,
+			CreatedAt:     user.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
 		},
 	})
 }
@@ -193,37 +221,27 @@ func (h *AuthHandler) InitiateGoogleOAuth(c *fiber.Ctx) error {
 func (h *AuthHandler) GoogleOAuthCallback(c *fiber.Ctx) error {
 	state := c.Query("state")
 	if !h.stateStore.ValidateState(state) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid state parameter",
-		})
+		return c.Redirect("/login?error=invalid_state", fiber.StatusFound)
 	}
 
 	code := c.Query("code")
 	if code == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "missing authorization code",
-		})
+		return c.Redirect("/login?error=oauth_failed", fiber.StatusFound)
 	}
 
 	token, err := h.googleOAuth.Exchange(context.Background(), code)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to exchange code for token",
-		})
+		return c.Redirect("/login?error=oauth_failed", fiber.StatusFound)
 	}
 
 	oauth2Service, err := oauth2api.NewService(context.Background(), option.WithTokenSource(h.googleOAuth.TokenSource(context.Background(), token)))
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to create oauth2 service",
-		})
+		return c.Redirect("/login?error=oauth_failed", fiber.StatusFound)
 	}
 
 	userInfo, err := oauth2Service.Userinfo.Get().Do()
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to get user info from Google",
-		})
+		return c.Redirect("/login?error=oauth_failed", fiber.StatusFound)
 	}
 
 	existingUser, err := h.queries.GetUserByOAuthProvider(context.Background(), database.GetUserByOAuthProviderParams{
@@ -233,7 +251,6 @@ func (h *AuthHandler) GoogleOAuthCallback(c *fiber.Ctx) error {
 
 	var userID int64
 	var userEmail string
-	var createdAt pgtype.Timestamp
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -249,7 +266,6 @@ func (h *AuthHandler) GoogleOAuthCallback(c *fiber.Ctx) error {
 			}
 			userID = newUser.ID
 			userEmail = newUser.Email
-			createdAt = newUser.CreatedAt
 		} else {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "failed to fetch user",
@@ -258,22 +274,80 @@ func (h *AuthHandler) GoogleOAuthCallback(c *fiber.Ctx) error {
 	} else {
 		userID = existingUser.ID
 		userEmail = existingUser.Email
-		createdAt = existingUser.CreatedAt
 	}
 
 	jwtToken, err := auth.GenerateToken(userID, userEmail, h.jwtSecret)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to generate token",
+		return c.Redirect("/login?error=oauth_failed", fiber.StatusFound)
+	}
+
+	h.setJWTCookie(c, jwtToken)
+
+	redirectURL := fmt.Sprintf("/auth/callback?id=%d&email=%s&oauth_provider=google", userID, url.QueryEscape(userEmail))
+	return c.Redirect(redirectURL, fiber.StatusFound)
+}
+
+func (h *AuthHandler) Me(c *fiber.Ctx) error {
+	tokenString := c.Cookies("token")
+	if tokenString == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "missing authentication",
 		})
 	}
 
+	claims, err := auth.ValidateToken(tokenString, h.jwtSecret)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "invalid or expired token",
+		})
+	}
+
+	user, err := h.queries.GetUserByID(context.Background(), claims.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "user not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to fetch user",
+		})
+	}
+
+	newToken, err := auth.GenerateToken(user.ID, user.Email, h.jwtSecret)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to refresh token",
+		})
+	}
+
+	h.setJWTCookie(c, newToken)
+
+	oauthProvider := ""
+	if user.OauthProvider.Valid {
+		oauthProvider = user.OauthProvider.String
+	}
+
 	return c.Status(fiber.StatusOK).JSON(AuthResponse{
-		Token: jwtToken,
 		User: UserDetails{
-			ID:        userID,
-			Email:     userEmail,
-			CreatedAt: createdAt.Time.Format("2006-01-02T15:04:05Z"),
+			ID:            user.ID,
+			Email:         user.Email,
+			OAuthProvider: oauthProvider,
+			CreatedAt:     user.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
 		},
 	})
+}
+
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	c.Cookie(&fiber.Cookie{
+		Name:     "token",
+		Value:    "",
+		HTTPOnly: true,
+		Secure:   c.Protocol() == "https",
+		SameSite: "Strict",
+		MaxAge:   -1,
+		Path:     "/",
+	})
+
+	return c.SendStatus(fiber.StatusNoContent)
 }

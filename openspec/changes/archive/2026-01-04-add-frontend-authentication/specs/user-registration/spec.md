@@ -1,8 +1,29 @@
 # user-registration Specification
 
-## Purpose
-TBD - created by archiving change setup-backend-foundation. Update Purpose after archive.
-## Requirements
+## ADDED Requirements
+
+### Requirement: Registration sets HttpOnly cookie
+The system MUST set JWT tokens in HttpOnly cookies after successful registration.
+
+#### Scenario: Registration sets HttpOnly cookie
+**Given** a new user successfully registers via `/api/auth/register`
+**When** the JWT token is generated
+**Then** the token is set in a cookie named "token"
+**And** the cookie has HttpOnly flag set to true
+**And** the cookie has SameSite flag set to Strict
+**And** the cookie has Secure flag set to true in production
+**And** the cookie expiration matches JWT expiration (7 days)
+**And** the cookie path is set to "/"
+
+#### Scenario: Registration response excludes token from body
+**Given** a new user successfully registers
+**When** the response is sent
+**Then** the response body contains only user data: `{ user: { id, email, oauth_provider, created_at } }`
+**And** the response body does NOT contain a "token" field
+**And** the JWT is only in the cookie header
+
+## MODIFIED Requirements
+
 ### Requirement: Register new user
 The system MUST allow new users to register with email and password and set authentication cookie.
 
@@ -47,34 +68,3 @@ The system MUST allow new users to register with email and password and set auth
 **And** the response status is 400 Bad Request
 **And** an error message indicates which fields are missing
 **And** no cookie is set
-
-### Requirement: Password security
-User passwords MUST be securely hashed before storage.
-
-#### Scenario: Password is hashed
-**Given** a user registers with password "mysecretpassword"
-**When** the user is created
-**Then** the password is hashed using bcrypt cost factor 12
-**And** the plain password is never stored
-**And** the hash is stored in the `password_hash` column
-
-### Requirement: Registration sets HttpOnly cookie
-The system MUST set JWT tokens in HttpOnly cookies after successful registration.
-
-#### Scenario: Registration sets HttpOnly cookie
-**Given** a new user successfully registers via `/api/auth/register`
-**When** the JWT token is generated
-**Then** the token is set in a cookie named "token"
-**And** the cookie has HttpOnly flag set to true
-**And** the cookie has SameSite flag set to Strict
-**And** the cookie has Secure flag set to true in production
-**And** the cookie expiration matches JWT expiration (7 days)
-**And** the cookie path is set to "/"
-
-#### Scenario: Registration response excludes token from body
-**Given** a new user successfully registers
-**When** the response is sent
-**Then** the response body contains only user data: `{ user: { id, email, oauth_provider, created_at } }`
-**And** the response body does NOT contain a "token" field
-**And** the JWT is only in the cookie header
-

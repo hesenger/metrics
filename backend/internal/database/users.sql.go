@@ -49,7 +49,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, password_hash, created_at, updated_at)
 VALUES ($1, $2, NOW(), NOW())
-RETURNING id, email, created_at, updated_at
+RETURNING id, email, oauth_provider, oauth_id, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -58,10 +58,12 @@ type CreateUserParams struct {
 }
 
 type CreateUserRow struct {
-	ID        int64            `json:"id"`
-	Email     string           `json:"email"`
-	CreatedAt pgtype.Timestamp `json:"created_at"`
-	UpdatedAt pgtype.Timestamp `json:"updated_at"`
+	ID            int64            `json:"id"`
+	Email         string           `json:"email"`
+	OauthProvider pgtype.Text      `json:"oauth_provider"`
+	OauthID       pgtype.Text      `json:"oauth_id"`
+	CreatedAt     pgtype.Timestamp `json:"created_at"`
+	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
@@ -70,6 +72,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.OauthProvider,
+		&i.OauthID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -77,17 +81,19 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, created_at, updated_at
+SELECT id, email, password_hash, oauth_provider, oauth_id, created_at, updated_at
 FROM users
 WHERE email = $1
 `
 
 type GetUserByEmailRow struct {
-	ID           int64            `json:"id"`
-	Email        string           `json:"email"`
-	PasswordHash pgtype.Text      `json:"password_hash"`
-	CreatedAt    pgtype.Timestamp `json:"created_at"`
-	UpdatedAt    pgtype.Timestamp `json:"updated_at"`
+	ID            int64            `json:"id"`
+	Email         string           `json:"email"`
+	PasswordHash  pgtype.Text      `json:"password_hash"`
+	OauthProvider pgtype.Text      `json:"oauth_provider"`
+	OauthID       pgtype.Text      `json:"oauth_id"`
+	CreatedAt     pgtype.Timestamp `json:"created_at"`
+	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
 }
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
@@ -97,6 +103,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.OauthProvider,
+		&i.OauthID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -104,17 +112,19 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, created_at, updated_at
+SELECT id, email, password_hash, oauth_provider, oauth_id, created_at, updated_at
 FROM users
 WHERE id = $1
 `
 
 type GetUserByIDRow struct {
-	ID           int64            `json:"id"`
-	Email        string           `json:"email"`
-	PasswordHash pgtype.Text      `json:"password_hash"`
-	CreatedAt    pgtype.Timestamp `json:"created_at"`
-	UpdatedAt    pgtype.Timestamp `json:"updated_at"`
+	ID            int64            `json:"id"`
+	Email         string           `json:"email"`
+	PasswordHash  pgtype.Text      `json:"password_hash"`
+	OauthProvider pgtype.Text      `json:"oauth_provider"`
+	OauthID       pgtype.Text      `json:"oauth_id"`
+	CreatedAt     pgtype.Timestamp `json:"created_at"`
+	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error) {
@@ -124,6 +134,8 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, er
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.OauthProvider,
+		&i.OauthID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
