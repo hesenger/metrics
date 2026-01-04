@@ -43,7 +43,11 @@
       "Bash(fi)",
       "Bash(make:*)",
       "Bash(source backend/.env)",
-      "Bash(export GOOGLE_REDIRECT_URL:*)"
+      "Bash(export GOOGLE_REDIRECT_URL:*)",
+      "Bash(bash)",
+      "Bash(~/.bun/bin/bun:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)"
     ]
   }
 }
