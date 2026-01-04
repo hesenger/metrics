@@ -1,5 +1,11 @@
 backend/bin/
 backend/.env
+backend/web/*
+!backend/web/embedded.txt
+.env
 .env.local
 .claude/settings.local.json
 server.log
+
+frontend/node_modules/
+frontend/dist/

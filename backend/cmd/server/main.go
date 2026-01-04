@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
+	"net/http"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
+	backend "github.com/hesen/metrics"
 	"github.com/hesen/metrics/internal/config"
 	"github.com/hesen/metrics/internal/database"
 	"github.com/hesen/metrics/internal/handlers"
@@ -38,6 +42,16 @@ func main() {
 	app.Post("/api/auth/login", authHandler.Login)
 	app.Get("/api/auth/google", authHandler.InitiateGoogleOAuth)
 	app.Get("/api/auth/google/callback", authHandler.GoogleOAuthCallback)
+
+	webFS, err := fs.Sub(backend.WebAssets, "web")
+	if err != nil {
+		log.Fatalf("failed to create web filesystem: %v", err)
+	}
+
+	app.Use("*", filesystem.New(filesystem.Config{
+		Root:  http.FS(webFS),
+		Index: "index.html",
+	}))
 
 	log.Printf("server starting on port %s", cfg.Port)
 	if err := app.Listen(fmt.Sprintf(":%s", cfg.Port)); err != nil {
